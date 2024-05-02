@@ -21,38 +21,48 @@ jobs:
           python-version: "3.11"
 
       - name: Get previous run artifact
-        run: >
-          ARTIFACT_ID=$(curl -L 
-          -H "Accept: application/vnd.github+json" 
-          -H "X-GitHub-Api-Version: 2022-11-28" 
-          "https://api.github.com/repos/RedRoverSchool/LumaProjectPython_2024_spring/actions/artifacts?name=allure-results" 
-          | python -c "import sys, json; print(json.load(sys.stdin)['artifacts'][0]['id']);") 
-          &&
-          curl -L 
-          -H "Accept: application/vnd.github+json" 
-          -H "Authorization: Bearer ${{ secrets.TOKEN }}" 
-          -H "X-GitHub-Api-Version: 2022-11-28" 
-          https://api.github.com/repos/RedRoverSchool/LumaProjectPython_2024_spring/actions/artifacts/$ARTIFACT_ID/zip 
-          -o artifacts.zip &&
-          REPORT_ID=$(curl -L 
-          -H "Accept: application/vnd.github+json" 
-          -H "X-GitHub-Api-Version: 2022-11-28" 
-          "https://api.github.com/repos/RedRoverSchool/LumaProjectPython_2024_spring/actions/artifacts?name=github-pages" 
-          | python -c "import sys, json; print(json.load(sys.stdin)['artifacts'][0]['id']);") 
-          &&
-          curl -L 
-          -H "Accept: application/vnd.github+json" 
-          -H "Authorization: Bearer ${{ secrets.TOKEN }}" 
-          -H "X-GitHub-Api-Version: 2022-11-28" 
-          https://api.github.com/repos/RedRoverSchool/LumaProjectPython_2024_spring/actions/artifacts/$REPORT_ID/zip 
-          -o pages.zip
+        run: |
+          set -euo pipefail
+          ARTIFACT_ID=$(curl -L \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "https://api.github.com/repos/${{ github.repository }}/actions/artifacts?name=allure-results" \
+          |  jq -r '.artifacts[0].id|.//""')
+          if [ "x$ARTIFACT_ID" != "x" ]
+          then
+            curl -fL \
+                    -H "Accept: application/vnd.github+json" \
+                    -H "Authorization: Bearer ${{ secrets.TOKEN }}"  \
+                    -H "X-GitHub-Api-Version: 2022-11-28" \
+                    https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip \
+                    -o artifacts.zip 
+          fi
+          REPORT_ID=$(curl -L \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "https://api.github.com/repos/${{ github.repository }}/actions/artifacts?name=github-pages" \
+          | jq -r '.artifacts[0].id|.//""')
+          if [ "x$REPORT_ID" != "x" ]
+          then
+            curl -L \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.TOKEN }}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$REPORT_ID/zip \
+              -o pages.zip
+          fi
+
+#      - run: mkdir allure-results && unzip artifacts.zip -d allure-results
 #        continue-on-error: true
-      - run: mkdir allure-results && unzip artifacts.zip -d allure-results
-#        continue-on-error: true
-      - run: mkdir old_pages pages_history && unzip pages.zip -d old_pages && tar -xvf old_pages/artifact.tar -C pages_history
-#        continue-on-error: true
-      - run: cp pages_history/history/* allure-results && cp -r pages_history/history allure-results
-#        continue-on-error: true
+      - run: mkdir allure-results old_pages pages_history && unzip pages.zip -d old_pages && tar -xvf old_pages/artifact.tar -C pages_history
+        continue-on-error: true
+      - run: cp -r pages_history/history allure-results
+        continue-on-error: true
+
+#        full history version with all content of allure-results saved between runs - very slow
+#      - run: mkdir allure-results && unzip artifacts.zip -d allure-results
+#      - run: mkdir old_pages pages_history && unzip pages.zip -d old_pages && tar -xvf old_pages/artifact.tar -C pages_history
+#      - run: cp pages_history/history/* allure-results && cp -r pages_history/history allure-results
 
       - name: Store allure history
         uses: actions/upload-artifact@v3
@@ -146,8 +156,16 @@ jobs:
     needs: generate-report
     name: Report publication
     steps:
-      - name: Download all workflow run artifacts
+#        only history without content of allure-results
+      - name: Download _site workflow run artifact
         uses: actions/download-artifact@v3
+        with:
+          name: _site
+          path:
+            _site
+##        full history version with all content of allure-results saved between runs - very slow
+#      - name: Download all workflow run artifacts
+#        uses: actions/download-artifact@v3
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v2
